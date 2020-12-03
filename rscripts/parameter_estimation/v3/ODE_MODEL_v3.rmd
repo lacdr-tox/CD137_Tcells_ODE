@@ -1,0 +1,341 @@
+---
+title: "ODE_MODEL"
+author: "R.J. Beck"
+date: "28/06/2020"
+output: html_document
+---
+
+To perform the parameter estimation (which takes long) run the script fit_selected_v3b.R, which will save the output in the directory called fitted_output
+
+```{r setup, include=FALSE}
+require(ggplot2)
+require(gdata)
+require(deSolve)
+knitr::opts_knit$set(root.dir = "/home/richard/Documents/03_CTLsGoesNative/000_archive/rscripts/parameter_estimation/v3")
+source("process_fits_v3.R")
+source("sensitivity_v3.R")
+source("fit_model_v3b.R") ## contains the get.g and get.iv functions
+ff <- list.files("fitted_output")  
+x3 <- lapply(ff,evaluate_fits,fit_dir="fitted_output",d7s=FALSE)
+x7 <- lapply(ff,evaluate_fits,fit_dir="fitted_output",d7s=TRUE)
+s3_ke <- lapply(ff,vary_par ,fit_dir="fitted_output",d7s=FALSE)
+s7_ke <- lapply(ff,vary_par ,fit_dir="fitted_output",d7s=TRUE)
+
+s3_kq <- lapply(ff,vary_par ,fit_dir="fitted_output",vary="kq",d7s=FALSE)
+s7_kq <- lapply(ff,vary_par ,fit_dir="fitted_output",vary="kq",d7s=TRUE)
+
+```
+
+INVESTIGATE THE BEST FITTING PARAMETERS
+
+```{r, echo=FALSE, message=FALSE,warn=FALSE}
+pardf <- data.frame(do.call(rbind,lapply(x3, function(h) h$par)))
+pardf <- reshape2::melt(pardf,id.vars=c("g","const_inf","dr","id","treatment","QSS","t_in","T0","t50"))
+pardf <- pardf[pardf$variable!="pow",]
+pardf$value <- as.numeric(pardf$value)
+pardf <- pardf[pardf$value>0,]
+
+par_summary <- aggregate(pardf[c("value")],by=pardf[c("g","variable","QSS","treatment")],mean)
+par_summary$variable <- factor(par_summary$variable,levels=c("s1","ki","di","kq","dq","ke","kr"))
+pardf$variable <- factor(pardf$variable,levels=c("s1","ki","di","kq","dq","ke","kr"))
+
+
+pa <- ggplot(pardf,aes(x=variable,y=value,color=treatment,shape=treatment))+
+  facet_grid(cols=vars(g))+
+  geom_jitter(height=0,width=0.3)+
+  geom_point(data=par_summary,shape=95,size=10)+
+  scale_x_discrete("parameter",labels=c(expression(s),expression(k[i]), expression(d[i]), expression(k[q]),
+                                        expression(d[q]), expression(k[e]),expression(k[r])))+
+  scale_y_log10(expression(fitted~rate~(day^-1)))+
+  theme_classic(base_size = 20)
+pa
+
+
+pa0 <- ggplot(subset(pardf,g==0.5),aes(x=variable,y=value,color=treatment,shape=treatment))+
+  #facet_grid(cols=vars(g))+
+  geom_jitter(height=0,width=0.3)+
+  geom_point(data=subset(par_summary,g==0.5),shape=95,size=10)+
+  scale_x_discrete("parameter",labels=c(expression(s),expression(k[i]), expression(d[i]), expression(k[q]),
+                                        expression(d[q]), expression(k[e]),expression(k[r])))+
+  scale_y_log10(expression(fitted~rate~(day^-1)))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  scale_shape_discrete(labels=c("ACT-only","ACT+mAb"))
+pa0
+
+```
+
+```{r}
+errordf <- data.frame(do.call(rbind,lapply(x3, function(h) h$errordf)))
+pe0 <- ggplot(errordf,aes(x=treatment,y=error,color=treatment,shape=treatment))+
+  facet_grid(cols=vars(g))+
+  geom_jitter(height=0,width=0.3)+
+  scale_x_discrete("treatment")+
+  scale_y_continuous("RMSE")+
+  theme_classic(base_size = 20)
+pe0
+
+#pe1 <- ggplot(subset(errordf,QSS==1),aes(x=g,y=error,color=treatment,shape=treatment))+
+ # facet_grid(rows=vars(QSS),labeller = label_bquote(rows=QSS==.(QSS)))+
+  #geom_jitter(height=0,width=0.3)+
+  #scale_x_discrete("growth rate (g)")+
+  #scale_y_continuous("RMSE")+
+  #theme_classic(base_size = 20)
+#pe1
+
+```
+
+```{r}
+ivdf <- data.frame(do.call(rbind,lapply(x3, function(h) h$df)))
+ivdf <- reshape2::melt(ivdf,id.vars=c("treatment","id","time","QSS"))
+
+idf <- rbind(get.iv("mAB"),get.iv("control"))
+idf <- reshape2::melt(idf,id.vars=c("day","ID"))
+names(idf)[names(idf)=="ID"] <- "treatment"
+
+pb0 <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&QSS==0),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  facet_grid(rows=vars(variable),scales = "free_y")+
+#  geom_segment(data=mdf,aes(x=t1,xend=t2,y=value,yend=value))+
+  geom_line(aes(group=id),size=1.2)+
+  geom_jitter(data=subset(idf,variable%in%c("TCm","CTLm","CTLa","killing")), aes(x=as.numeric(day),y=as.numeric(value),shape=treatment),height=0,width=0.3)+
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("process rate", (day^-1))))+
+  theme_classic(base_size = 20)
+pb0
+
+pc0 <- ggplot(subset(ivdf,variable%in%c("ET")&QSS==0),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  geom_line(aes(group=id),size=1.2)+
+  geom_jitter(data=subset(idf,variable%in%c("ET")), aes(x=as.numeric(day),y=as.numeric(value),shape=treatment),height=0,width=0.3)+
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("ET ratio", (day^-1))))+
+  theme_classic(base_size = 20)
+pc0
+
+
+```
+
+Both fits to volumetric growth data (d3s and d7s)
+
+```{r}
+
+ivdf3 <- data.frame(do.call(rbind,lapply(x3, function(h) h$df)))
+ivdf3$start <- "d3.s"
+ivdf3$net_g <- ivdf3$TCm-ivdf3$killing*ivdf3$ET
+
+ivdf7 <- data.frame(do.call(rbind,lapply(x7, function(h) h$df)))
+ivdf7$start <- "d7.s"
+ivdf7$net_g <- ivdf7$TCm-ivdf7$killing*ivdf7$ET
+
+ivdf <- rbind(ivdf3,ivdf7)
+
+ivdf <- reshape2::melt(ivdf,id.vars=c("treatment","id","time","start","g"))
+
+mdf <- rbind(get.g("mAB"),get.g("control"))
+names(mdf)[names(mdf)=="g"] <- "value"
+mdf$variable <- "net_g"
+mdf$day <- mdf$t1+(mdf$t2-mdf$t1)/2
+mdf_summ <- aggregate(mdf[c("value")],by=mdf[c("treatment","variable","day","start")],mean)
+mdf_summ_sd <- aggregate(mdf[c("value")],by=mdf[c("treatment","variable","day","start")],sd)
+mdf_summ$sd <- mdf_summ_sd$value
+
+
+idf_d7 <- get.d7.data("mAB")
+idf_d7$treatment <- "mAB"
+tmp <- get.d7.data("control")
+tmp$treatment <-"control"
+idf_d7 <- rbind(idf_d7,tmp)
+idf_d7$day <- 10
+idf_d7 <- reshape2::melt(idf_d7,id.vars=c("day","treatment"))
+idf_d7$start <- "d7.s"
+
+idf <- rbind(get.iv("mAB"),get.iv("control"))
+idf <- reshape2::melt(idf,id.vars=c("day","ID"))
+names(idf)[names(idf)=="ID"] <- "treatment"
+idf$start <- "d3.s"
+
+idf <- rbind(idf,idf_d7)
+
+idf_summ <- aggregate(idf[c("value")],by=idf[c("treatment","variable","day","start")],mean)
+idf_summ_sd <- aggregate(idf[c("value")],by=idf[c("treatment","variable","day","start")],sd)
+idf_summ$sd <- idf_summ_sd$value
+
+ivd3 <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&g==0.5&start=="d3.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  facet_grid(rows=vars(variable),scales = "free_y")+
+#  geom_segment(data=mdf,aes(x=t1,xend=t2,y=value,yend=value))+
+  geom_line(aes(group=id),size=1.2)+
+  geom_point(data=subset(idf_summ,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d3.s"), aes(x=as.numeric(day),y=value))+
+  geom_errorbar(data=subset(idf_summ,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d3.s"), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
+  
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("process rate", (day^-1))))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+ivd3
+
+pb3_all <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d3.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  facet_grid(rows=vars(variable),cols=vars(g),scales = "free_y")+
+  geom_line(aes(group=id),size=1.2)+
+  geom_point(data=subset(idf_summ,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d3.s"), aes(x=as.numeric(day),y=value))+
+  geom_errorbar(data=subset(idf_summ,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d3.s"), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
+  
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("process rate", (day^-1))))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+pb3_all
+
+pb7_all <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d7.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  facet_grid(rows=vars(variable),cols=vars(g),scales = "free_y")+
+  geom_line(aes(group=id),size=1.2)+
+  geom_point(data=subset(idf_summ,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d7.s"), aes(x=as.numeric(day),y=value))+
+  geom_errorbar(data=subset(idf_summ,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d7.s"), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
+  
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("process rate", (day^-1))))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+pb7_all
+
+ivd7 <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&g==0.5&start=="d7.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  facet_grid(rows=vars(variable),scales = "free_y")+
+  geom_point(data=subset(idf_summ,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d7.s"), aes(x=as.numeric(day),y=value))+
+  geom_errorbar(data=subset(idf_summ,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d7.s"), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
+  geom_line(aes(group=id),size=1.2)+
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("process rate", (day^-1))))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+ivd7
+
+etd3 <- ggplot(subset(ivdf,variable%in%c("ET")&g==0.5&start=="d3.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  #facet_grid(cols=vars(start),scales = "free_y")+
+  geom_line(aes(group=id),size=1.2)+
+  geom_point(data=subset(idf_summ,variable%in%c("ET")&start=="d3.s"), aes(x=as.numeric(day),y=value))+
+  geom_errorbar(data=subset(idf_summ,variable%in%c("ET")&start=="d3.s"), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("ET ratio")))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+etd3
+
+pc_all <- ggplot(subset(ivdf,variable%in%c("ET")),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  facet_grid(cols=vars(g),rows=vars(start),scales = "free_y")+
+  geom_line(aes(group=id),size=1.2)+
+  geom_point(data=subset(idf_summ,variable%in%c("ET")), aes(x=as.numeric(day),y=value))+
+  geom_errorbar(data=subset(idf_summ,variable%in%c("ET")), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("ET ratio")))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+pc_all
+
+etd7 <- ggplot(subset(ivdf,variable%in%c("ET")&g==0.5&start=="d7.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  geom_line(aes(group=id),size=1.2)+
+  geom_point(data=subset(idf_summ,variable%in%c("ET")&start=="d7.s"), aes(x=as.numeric(day),y=value))+
+  geom_errorbar(data=subset(idf_summ,variable%in%c("ET")&start=="d7.s"), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("ET ratio")))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+etd7
+
+
+
+gd3 <- ggplot(subset(ivdf,variable%in%c("net_g")&g==0.5&start=="d3.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  #facet_grid(cols=vars(start),scales = "free_y")+
+  geom_point(data=subset(mdf_summ,start=="d3.s"), aes(x=as.numeric(day),y=value))+
+  geom_errorbar(data=subset(mdf_summ,start=="d3.s"), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
+  geom_line(aes(group=id),size=1.2)+
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("net growth", (day^-1))))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+gd3
+
+gd7 <- ggplot(subset(ivdf,variable%in%c("net_g")&g==0.5&start=="d7.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  #facet_grid(cols=vars(start),scales = "free_y")+
+  geom_point(data=subset(mdf_summ,start=="d7.s"), aes(x=as.numeric(day),y=value))+
+  geom_errorbar(data=subset(mdf_summ,start=="d7.s"), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
+  geom_line(aes(group=id),size=1.2)+
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("net growth", (day^-1))))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+gd7
+
+pd_all <- ggplot(subset(ivdf,variable%in%c("net_g")),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  facet_grid(rows=vars(start),cols=vars(g),scales = "free_y")+
+  geom_point(data=mdf_summ, aes(x=as.numeric(day),y=value))+
+  geom_errorbar(data=mdf_summ, aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
+  geom_line(aes(group=id),size=1.2)+
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("net growth", (day^-1))))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+pd_all
+
+
+all_ode_1 <- egg::ggarrange(etd3,etd7,gd3,gd7,nrow=2)
+all_ode_2 <- egg::ggarrange(ivd3,ivd7,nrow=1)
+```
+Predict the infiltration into each window.
+
+```{r}
+tumdf3 <- data.frame(do.call(rbind,lapply(x3, function(h) h$out)))
+tumdf3$start <- "d3"
+tumdf3$inf <- (tumdf3$Tc+tumdf3$Tq)^(2/3)*tumdf3$s1/(tumdf3$Tc+tumdf3$Tq)
+tumdf3$inf[tumdf3$time<3]<-0
+tumdf7 <- data.frame(do.call(rbind,lapply(x7, function(h) h$out)))
+tumdf7$start <- "d7"
+tumdf7$inf <- (tumdf7$Tc+tumdf7$Tq)^(2/3)*tumdf7$s1/(tumdf7$Tc+tumdf7$Tq)
+tumdf7$inf[tumdf7$time<7]<-0
+tumdf <- rbind(tumdf3,tumdf7)
+
+pi3 <- ggplot(tumdf,aes(x=time,y=10^3*inf/24,color=treatment,group=id))+
+  facet_grid(rows=vars(start),cols=vars(g),scales = "free_y")+
+  geom_line(aes(group=id))+
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_continuous(expression(paste("infiltration", (hour^-1%.%TCx10^-3))))+
+  theme_classic(base_size = 20)
+pi3
+
+```
+
+```{r}
+x <- do.call(rbind,s7_ke)
+x <- subset(x,g==0.5)
+p4ke <- ggplot(x,aes(x=time,y=(Tc+Tq)/1200,group=id,color=treatment))+
+  facet_grid(cols=vars(ratio),labeller=label_bquote(cols=k[e]==.(ratio)~widehat(k[e]) ))+
+  geom_line()+
+  scale_x_continuous("day", breaks=seq(0,15,3),limits=c(0,15))+
+  scale_y_log10(expression("T"/T[0]))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+p4ke
+p <- ggplot(x,aes(x=time,y=E/(Tc+Tq),group=id,color=treatment))+
+  facet_grid(cols=vars(ratio))+
+  geom_line()+
+  scale_y_continuous(limits=c(0,.5))
+p
+
+y <- do.call(rbind,s7_kq)
+y <- subset(y,g==0.5)
+p4kq <- ggplot(y,aes(x=time,y=(Tc+Tq)/1200,group=id,color=treatment))+
+  facet_grid(cols=vars(ratio),labeller=label_bquote(cols=k[q]==.(ratio)~widehat(k[q]) ))+
+  geom_line()+
+  scale_x_continuous("day", breaks=seq(0,15,3),limits=c(0,15))+
+  scale_y_log10(expression("T"/T[0]))+
+  theme_classic(base_size = 20)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+p4kq
+
+
+p <- ggplot(y,aes(x=time,y=E/(Tc+Tq),group=id,color=treatment))+
+  facet_grid(cols=vars(ratio))+
+  geom_line()+
+  scale_y_continuous()
+p
+
+p4_all <- egg::ggarrange(p4ke,p4kq,nrow=2)
+
+```
