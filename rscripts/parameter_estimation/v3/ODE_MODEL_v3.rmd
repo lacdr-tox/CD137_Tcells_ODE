@@ -8,7 +8,9 @@ output: html_document
 To perform the parameter estimation (which takes long) run the script fit_selected_v3b.R, which will save the output in the directory called fitted_output
 
 ```{r setup, include=FALSE}
+base_dir <- "/home/richard/Documents/03_CTLsGoesNative/000_archive"
 require(ggplot2)
+require(gridExtra)
 require(gdata)
 require(deSolve)
 knitr::opts_knit$set(root.dir = "/home/richard/Documents/03_CTLsGoesNative/000_archive/rscripts/parameter_estimation/v3")
@@ -16,14 +18,128 @@ source("process_fits_v3.R")
 source("sensitivity_v3.R")
 source("fit_model_v3b.R") ## contains the get.g and get.iv functions
 ff <- list.files("fitted_output")  
+if(FALSE){
+pops <- lapply(ff,evaluate_members,fit_dir="fitted_output")
+saveRDS(pops,"pops.rds")
+}
 x3 <- lapply(ff,evaluate_fits,fit_dir="fitted_output",d7s=FALSE)
 x7 <- lapply(ff,evaluate_fits,fit_dir="fitted_output",d7s=TRUE)
+
+
+
 s3_ke <- lapply(ff,vary_par ,fit_dir="fitted_output",d7s=FALSE)
 s7_ke <- lapply(ff,vary_par ,fit_dir="fitted_output",d7s=TRUE)
 
 s3_kq <- lapply(ff,vary_par ,fit_dir="fitted_output",vary="kq",d7s=FALSE)
 s7_kq <- lapply(ff,vary_par ,fit_dir="fitted_output",vary="kq",d7s=TRUE)
 
+```
+
+Sensitivity analysis: 
+
+1) Find best fitting parameters
+2) Quantify the gradient of the solution w.r.t. each variable input parameter. 
+
+Conclusion is that the model is identifiable (locally, anyway). This means that we don't need to consider other values for the parameters so much, because they would not lead to such good fits to the experimental data. Note that dq is likely so flat for the control case because not enough tumour cells became quiescent, for their recovery rate to matter so much.
+
+```{r}
+require(ggplot2)
+fit_dir <- "fitted_output"
+f5 <- ff[grep("g-5",ff)]
+
+x <- sensitivity.analysis(ff=f5[1],fit_dir,range=seq(0.7,1.5,0.05))
+y <- sensitivity.analysis(ff=f5[6],fit_dir,range=seq(0.7,1.5,0.05))
+
+z <- rbind(x,y)
+
+z$pars_f <- factor(z$varied,levels=c("s1","ki","di","kq","dq","ke","kr"))
+z$pars_fe <- factor(z$pars_f,labels=c(expression(s),expression(k[i]),expression(d[i]),expression(k[q]),expression(d[q]),expression(k[e]),expression(k[r])))
+
+z$treatment[z$treatment=="mAB"] <- "ACT+mAb"
+z$treatment[z$treatment=="control"] <- "ACT-only"
+
+
+px <- ggplot(z,aes(x=range,y=errors))+
+  facet_grid(cols=vars(pars_fe),rows=vars(treatment),scales = "free",labeller=label_parsed)+
+  geom_line()+
+  scale_x_continuous("parameter value (relative to optimal)")+
+  scale_y_continuous("RMSE")+
+    theme_classic(base_size = 10)
+px
+
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/s5.tiff",plot = px,width = unit(7.5,"in"),height=unit(5,"in"),dpi=300)
+
+```
+
+```{r}
+
+x <- readRDS(paste("stored_populations", list.files("stored_populations")[1],sep="/"))
+
+fn.control <- x$fn.control
+pops <- x$member$storepop
+
+selected <- (1:10)*10-1
+
+pops <- mclapply(selected, function(i){
+  pop <- pops[[i]]
+  errors <- evaluate_population(pop,fn.control)
+  pop <- data.frame(pop)
+  pop$error = errors
+  pop$generation=i
+  return(pop)
+  
+}, mc.cores=10)
+
+pops <- do.call(rbind,pops)
+
+pops <- pops[order(pops$error),]
+pops <- head(pops,nrow(pops)/50)
+```
+
+```{r}
+require(umap)
+pops.df <- do.call(rbind,lapply(pops,process.population))
+pops.df <- pops.df[pops.df$g==0.5,]
+
+pop.data <- pops.df[,1:7]
+
+pop.umap <- umap(pop.data)
+
+umap.data <- data.frame(pop.umap$layout)
+
+umap.data <- cbind(umap.data,pops.df[,8:ncol(pops.df)])
+
+p <- ggplot(umap.data,aes(x=X1,y=X2,color=treatment))+
+  geom_point()+
+  theme_classic()
+p
+
+p <- ggplot(umap.data,aes(x=X1,y=X2,color=id))+
+  geom_point()+
+  theme_classic()
+p
+
+p <- ggplot(subset(umap.data,treatment=="control"),aes(x=X1,y=X2,color=errors))+
+  geom_point()+
+  theme_classic()
+p
+
+p <- ggplot(subset(umap.data,treatment=="mAB"),aes(x=X1,y=X2,color=errors))+
+  geom_point()+
+  theme_classic()
+p
+
+
+```
+
+```{r}
+
+treatments <- sapply(pops,function(p) p$treatment)
+mab <- pops[treatments=="mAB"]
+con <- pops[treatments=="control"]
+
+mab.err <- unlist(lapply(mab,function(x) x$error))
+hist(mab.err)
 ```
 
 INVESTIGATE THE BEST FITTING PARAMETERS
@@ -40,39 +156,60 @@ par_summary$variable <- factor(par_summary$variable,levels=c("s1","ki","di","kq"
 pardf$variable <- factor(pardf$variable,levels=c("s1","ki","di","kq","dq","ke","kr"))
 
 
-pa <- ggplot(pardf,aes(x=variable,y=value,color=treatment,shape=treatment))+
+
+
+pa <- ggplot(subset(pardf,g%in%c(0.4,0.5,0.6)),aes(x=variable,y=value,color=treatment,shape=treatment))+
   facet_grid(cols=vars(g))+
   geom_jitter(height=0,width=0.3)+
-  geom_point(data=par_summary,shape=95,size=10)+
+  geom_point(data=subset(par_summary,g%in%c(0.4,0.5,0.6)),shape=95,size=10)+
   scale_x_discrete("parameter",labels=c(expression(s),expression(k[i]), expression(d[i]), expression(k[q]),
                                         expression(d[q]), expression(k[e]),expression(k[r])))+
   scale_y_log10(expression(fitted~rate~(day^-1)))+
-  theme_classic(base_size = 20)
+  theme_classic(base_size = 12)+
+    scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  scale_shape_discrete(labels=c("ACT-only","ACT+mAb"))+
+  theme(legend.position = "none")
 pa
 
 
 pa0 <- ggplot(subset(pardf,g==0.5),aes(x=variable,y=value,color=treatment,shape=treatment))+
   #facet_grid(cols=vars(g))+
   geom_jitter(height=0,width=0.3)+
-  geom_point(data=subset(par_summary,g==0.5),shape=95,size=10)+
+  geom_point(data=subset(par_summary,g==0.5),shape=95,size=8)+
   scale_x_discrete("parameter",labels=c(expression(s),expression(k[i]), expression(d[i]), expression(k[q]),
                                         expression(d[q]), expression(k[e]),expression(k[r])))+
   scale_y_log10(expression(fitted~rate~(day^-1)))+
-  theme_classic(base_size = 20)+
+  theme_classic(base_size = 10)+
   scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
   scale_shape_discrete(labels=c("ACT-only","ACT+mAb"))
 pa0
 
+f3c <- egg::ggarrange(pa0,nrow=1,labels=c("C"))
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/f3c.tiff",plot = f3c,width = unit(3.5,"in"),height=unit(2.25,"in"),dpi=300)
+
+print(subset(par_summary,g==0.5))
+
 ```
+lowest error is for parms with id=012 (control) and id = 043 (mAB). This info can be used to recover the best fitting parms
+
+```{r}
+bestfits <- x3[sapply(x3, function(h) h$errordf$id%in%c("012","043"))]
+
+bestfits[[1]]$par
+bestfits[[2]]$par
+
+```
+
 
 ```{r}
 errordf <- data.frame(do.call(rbind,lapply(x3, function(h) h$errordf)))
-pe0 <- ggplot(errordf,aes(x=treatment,y=error,color=treatment,shape=treatment))+
+pe0 <- ggplot(subset(errordf,g%in%c(0.4,0.5,0.6)),aes(x=treatment,y=error,color=treatment,shape=treatment))+
   facet_grid(cols=vars(g))+
   geom_jitter(height=0,width=0.3)+
   scale_x_discrete("treatment")+
   scale_y_continuous("RMSE")+
-  theme_classic(base_size = 20)
+  theme_classic(base_size = 12)+
+  theme(legend.position = "none")
 pe0
 
 #pe1 <- ggplot(subset(errordf,QSS==1),aes(x=g,y=error,color=treatment,shape=treatment))+
@@ -80,7 +217,7 @@ pe0
   #geom_jitter(height=0,width=0.3)+
   #scale_x_discrete("growth rate (g)")+
   #scale_y_continuous("RMSE")+
-  #theme_classic(base_size = 20)
+  #theme_classic(base_size = 12)
 #pe1
 
 ```
@@ -100,7 +237,7 @@ pb0 <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&QSS==0),a
   geom_jitter(data=subset(idf,variable%in%c("TCm","CTLm","CTLa","killing")), aes(x=as.numeric(day),y=as.numeric(value),shape=treatment),height=0,width=0.3)+
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("process rate", (day^-1))))+
-  theme_classic(base_size = 20)
+  theme_classic(base_size = 12)
 pb0
 
 pc0 <- ggplot(subset(ivdf,variable%in%c("ET")&QSS==0),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
@@ -108,7 +245,7 @@ pc0 <- ggplot(subset(ivdf,variable%in%c("ET")&QSS==0),aes(x=as.numeric(time),y=a
   geom_jitter(data=subset(idf,variable%in%c("ET")), aes(x=as.numeric(day),y=as.numeric(value),shape=treatment),height=0,width=0.3)+
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("ET ratio", (day^-1))))+
-  theme_classic(base_size = 20)
+  theme_classic(base_size = 12)
 pc0
 
 
@@ -117,6 +254,18 @@ pc0
 Both fits to volumetric growth data (d3s and d7s)
 
 ```{r}
+
+require(ggplot2)
+library(gridExtra)
+library(cowplot)
+get_legend<-function(myggplot){
+  tmp <- ggplot_gtable(ggplot_build(myggplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
+
+day_labels <- c('d3.s'="day 3", 'd7.s'="day 7")
 
 ivdf3 <- data.frame(do.call(rbind,lapply(x3, function(h) h$df)))
 ivdf3$start <- "d3.s"
@@ -168,23 +317,24 @@ ivd3 <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&g==0.5&s
   
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("process rate", (day^-1))))+
-  theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  theme_classic(base_size = 12)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  guides(color=FALSE)
 ivd3
 
-pb3_all <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d3.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+pb3_all <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d3.s"&g%in%c(0.4,0.5,0.6)),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
   facet_grid(rows=vars(variable),cols=vars(g),scales = "free_y")+
   geom_line(aes(group=id),size=1.2)+
   geom_point(data=subset(idf_summ,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d3.s"), aes(x=as.numeric(day),y=value))+
   geom_errorbar(data=subset(idf_summ,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d3.s"), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
-  
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("process rate", (day^-1))))+
-  theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  theme_classic(base_size = 12)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  theme(legend.position = "top")
 pb3_all
 
-pb7_all <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d7.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+pb7_all <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d7.s"&g%in%c(0.4,0.5,0.6)),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
   facet_grid(rows=vars(variable),cols=vars(g),scales = "free_y")+
   geom_line(aes(group=id),size=1.2)+
   geom_point(data=subset(idf_summ,variable%in%c("TCm","CTLm","CTLa","killing")&start=="d7.s"), aes(x=as.numeric(day),y=value))+
@@ -192,8 +342,9 @@ pb7_all <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&start
   
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("process rate", (day^-1))))+
-  theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  theme_classic(base_size = 12)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  theme(legend.position = "none")
 pb7_all
 
 ivd7 <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&g==0.5&start=="d7.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
@@ -203,8 +354,9 @@ ivd7 <- ggplot(subset(ivdf,variable%in%c("TCm","CTLm","CTLa","killing")&g==0.5&s
   geom_line(aes(group=id),size=1.2)+
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("process rate", (day^-1))))+
-  theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  theme_classic(base_size = 12)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  guides(color=FALSE)
 ivd7
 
 etd3 <- ggplot(subset(ivdf,variable%in%c("ET")&g==0.5&start=="d3.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
@@ -214,19 +366,21 @@ etd3 <- ggplot(subset(ivdf,variable%in%c("ET")&g==0.5&start=="d3.s"),aes(x=as.nu
   geom_errorbar(data=subset(idf_summ,variable%in%c("ET")&start=="d3.s"), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("ET ratio")))+
-  theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  theme_classic(base_size = 12)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  guides(color=FALSE)
 etd3
 
-pc_all <- ggplot(subset(ivdf,variable%in%c("ET")),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
-  facet_grid(cols=vars(g),rows=vars(start),scales = "free_y")+
+pc_all <- ggplot(subset(ivdf,variable%in%c("ET")&g%in%c(0.4,0.5,0.6)),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  facet_grid(cols=vars(g),rows=vars(start),scales = "free_y",labeller = labeller(start=day_labels))+
   geom_line(aes(group=id),size=1.2)+
   geom_point(data=subset(idf_summ,variable%in%c("ET")), aes(x=as.numeric(day),y=value))+
   geom_errorbar(data=subset(idf_summ,variable%in%c("ET")), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("ET ratio")))+
-  theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  theme_classic(base_size = 12)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  theme(legend.position = "none")
 pc_all
 
 etd7 <- ggplot(subset(ivdf,variable%in%c("ET")&g==0.5&start=="d7.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
@@ -235,8 +389,9 @@ etd7 <- ggplot(subset(ivdf,variable%in%c("ET")&g==0.5&start=="d7.s"),aes(x=as.nu
   geom_errorbar(data=subset(idf_summ,variable%in%c("ET")&start=="d7.s"), aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("ET ratio")))+
-  theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  theme_classic(base_size = 12)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  guides(color=FALSE)
 etd7
 
 
@@ -248,8 +403,9 @@ gd3 <- ggplot(subset(ivdf,variable%in%c("net_g")&g==0.5&start=="d3.s"),aes(x=as.
   geom_line(aes(group=id),size=1.2)+
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("net growth", (day^-1))))+
-  theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  theme_classic(base_size = 12)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  guides(color=FALSE)
 gd3
 
 gd7 <- ggplot(subset(ivdf,variable%in%c("net_g")&g==0.5&start=="d7.s"),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
@@ -259,24 +415,52 @@ gd7 <- ggplot(subset(ivdf,variable%in%c("net_g")&g==0.5&start=="d7.s"),aes(x=as.
   geom_line(aes(group=id),size=1.2)+
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("net growth", (day^-1))))+
-  theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  theme_classic(base_size = 12)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  guides(color=FALSE)
 gd7
 
-pd_all <- ggplot(subset(ivdf,variable%in%c("net_g")),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
-  facet_grid(rows=vars(start),cols=vars(g),scales = "free_y")+
+pd_all <- ggplot(subset(ivdf,variable%in%c("net_g")&g%in%c(0.4,0.5,0.6)),aes(x=as.numeric(time),y=as.numeric(value),color=treatment))+
+  facet_grid(rows=vars(start),cols=vars(g),scales = "free_y",labeller = labeller(start=day_labels))+
   geom_point(data=mdf_summ, aes(x=as.numeric(day),y=value))+
   geom_errorbar(data=mdf_summ, aes(x=as.numeric(day),ymin=value-sd,ymax=value+sd))+
   geom_line(aes(group=id),size=1.2)+
   scale_x_continuous("day", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("net growth", (day^-1))))+
-  theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  theme_classic(base_size = 12)+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  theme(legend.position = "bottom",legend.direction = "horizontal")
+
+p5_legend <- get_legend(pd_all)
+pd_all <- pd_all +theme(legend.position = "none")
+
 pd_all
 
 
-all_ode_1 <- egg::ggarrange(etd3,etd7,gd3,gd7,nrow=2)
-all_ode_2 <- egg::ggarrange(ivd3,ivd7,nrow=1)
+
+legend_height <- 0.05
+label_height<-0.03
+r1 <- 0.45
+r2 <- 0.225
+r3 <- r2
+
+f5 <- ggdraw()+
+   draw_plot(ivd3, 0, legend_height+r2+r3, .5, r1)+ 
+ draw_plot(ivd7, 0.5, legend_height+r2+r3, .5, r1)+ 
+  draw_plot(etd3, 0, legend_height+r3, .5, r2) +
+   draw_plot(etd7, 0.5, legend_height+r3, .5, r2)+ 
+    draw_plot(gd3, 0, legend_height, .5, r3)+ 
+     draw_plot(gd7, 0.5, legend_height, .5, r3)+ 
+      draw_plot(p5_legend, 0, 0, 1, legend_height) +
+  draw_plot_label(c("A","B","C","D","E","F"), c(0, 0.5, 0, 0.5, 0, 0.5), c(1-label_height,1-label_height,legend_height+r2+r3,legend_height+r2+r3,legend_height+r3,legend_height+r3), size = 15)+
+    draw_plot_label(c("day 3 start", "day 7 start"), x=c(0.25,0.75),y=c(1,1),hjust = c(0.5,0.5))
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/f5.tiff",plot = f5,width = unit(7.5,"in"),height=unit(10,"in"),dpi=300)
+
+s3_fig_left <- egg::ggarrange(pd_all,pc_all,pa,pe0,nrow=4,labels=c("A","B","C","D"))
+s3_fig_right <- egg::ggarrange(pb3_all,pb7_all,nrow=2,labels=c("E","F"))
+
+s3_fig <- grid.arrange(s3_fig_left,s3_fig_right,nrow=1)
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/s3.tiff",plot = s3_fig,width = unit(10,"in"),height=unit(7.5,"in"),dpi=300)
 ```
 Predict the infiltration into each window.
 
@@ -301,32 +485,93 @@ pi3
 
 ```
 
+fit to volume data
+
 ```{r}
-x <- do.call(rbind,s7_ke)
-x <- subset(x,g==0.5)
-p4ke <- ggplot(x,aes(x=time,y=(Tc+Tq)/1200,group=id,color=treatment))+
+
+vdf <- read.csv(paste(base_dir,"/data/formattedGrowthAll.csv",sep=""))
+idf <- read.csv(paste(base_dir,"/data/formattedIntravital.csv",sep=""))
+
+tc.density <- mean(idf$TC)/(0.1*0.35^2) #126393.9
+
+vdf <- vdf[vdf$treatment%in%c("mAB","control"),]
+vdf$start[vdf$start=="d3.s"] <- "d3"
+vdf$start[vdf$start=="d7.s"] <- "d7"
+
+tumdf3 <- data.frame(do.call(rbind,lapply(x3, function(h) h$out)))
+tumdf3$start <- "d3"
+tumdf3$inf <- (tumdf3$Tc+tumdf3$Tq)^(2/3)*tumdf3$s1/(tumdf3$Tc+tumdf3$Tq)
+tumdf3$inf[tumdf3$time<3]<-0
+tumdf7 <- data.frame(do.call(rbind,lapply(x7, function(h) h$out)))
+tumdf7$start <- "d7"
+tumdf7$inf <- (tumdf7$Tc+tumdf7$Tq)^(2/3)*tumdf7$s1/(tumdf7$Tc+tumdf7$Tq)
+tumdf7$inf[tumdf7$time<7]<-0
+tumdf <- rbind(tumdf3,tumdf7)
+
+tumdf <- subset(tumdf,g==0.5)
+
+tumdf$V <- (tumdf$Tc+tumdf$Tq)/tc.density
+
+treatment_labels <- c(control="ACT-only",mAB="ACT+mAB")
+day_labels <- c(d3="day 3", d7="day 7")
+
+pV <- ggplot(tumdf,aes(x=time,y=V))+
+  facet_grid(rows=vars(start),cols=vars(treatment),scales = "free_y",labeller = labeller(start=day_labels,treatment=treatment_labels))+
+  geom_line(aes(group=id))+
+  geom_point(data=vdf,aes(x=day,y=vol))+
+  scale_x_continuous("day", breaks=seq(0,15,3))+
+  scale_y_log10(expression(paste("tumour volume", (mm^3))))+
+  theme_classic(base_size = 14)
+pV
+
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/s4.tiff",plot = pV,width = unit(7.5,"in"),height=unit(5,"in"),dpi=300)
+
+```
+
+```{r}
+
+# process tumour data by removing rows for tumours that get smaller than initial value (in violation of our tumour cell saturation assumption)
+tumour.progress <- function(x){
+  x <- subset(x,g==0.5)
+  x$Ttot <- x$Tc+x$Tq
+  x$Ttot[x$Ttot<1200]<- NA
+  return(x)
+}
+
+x <- tumour.progress(do.call(rbind,s7_ke))
+y <- tumour.progress(do.call(rbind,s7_kq))
+
+
+
+
+
+# 126393.9 is tc.density 
+p4ke <- ggplot(x,aes(x=time,y=(Ttot)/126393.9,group=id,color=treatment))+
   facet_grid(cols=vars(ratio),labeller=label_bquote(cols=k[e]==.(ratio)~widehat(k[e]) ))+
   geom_line()+
   scale_x_continuous("day", breaks=seq(0,15,3),limits=c(0,15))+
-  scale_y_log10(expression("T"/T[0]))+
+  scale_y_log10(expression(paste("tumour volume", (mm^3))),limits=c(0.008,3))+
   theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  theme(text = element_text(size=12))+
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  guides(color=FALSE)
 p4ke
+
 p <- ggplot(x,aes(x=time,y=E/(Tc+Tq),group=id,color=treatment))+
   facet_grid(cols=vars(ratio))+
   geom_line()+
   scale_y_continuous(limits=c(0,.5))
 p
 
-y <- do.call(rbind,s7_kq)
-y <- subset(y,g==0.5)
-p4kq <- ggplot(y,aes(x=time,y=(Tc+Tq)/1200,group=id,color=treatment))+
+
+p4kq <- ggplot(y,aes(x=time,y=Ttot/126393.9,group=id,color=treatment))+
   facet_grid(cols=vars(ratio),labeller=label_bquote(cols=k[q]==.(ratio)~widehat(k[q]) ))+
   geom_line()+
   scale_x_continuous("day", breaks=seq(0,15,3),limits=c(0,15))+
-  scale_y_log10(expression("T"/T[0]))+
+  scale_y_log10(expression(paste("tumour volume", (mm^3))),limits=c(0.008,15))+
   theme_classic(base_size = 20)+
-  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))
+  scale_color_discrete(labels=c("ACT-only","ACT+mAb"))+
+  theme(legend.position = "bottom",text=element_text(size=12))
 p4kq
 
 
@@ -336,6 +581,6 @@ p <- ggplot(y,aes(x=time,y=E/(Tc+Tq),group=id,color=treatment))+
   scale_y_continuous()
 p
 
-p4_all <- egg::ggarrange(p4ke,p4kq,nrow=2)
-
+f4 <- egg::ggarrange(p4ke,p4kq,nrow=2,labels=c("A","B"))
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/f4.tiff",plot = f4,width = unit(7.5,"in"),height=unit(6.5,"in"),dpi=300)
 ```

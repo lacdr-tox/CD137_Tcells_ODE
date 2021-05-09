@@ -1,6 +1,6 @@
 
 source("model_functions_v3.R")
-
+require(parallel)
 
 
 evaluate_fits <- function(ff,fit_dir,d7s=FALSE){ 
@@ -34,4 +34,47 @@ evaluate_fits <- function(ff,fit_dir,d7s=FALSE){
   return(x)
 }
 
+## load a saved evolutionary algorithm result, evaulate error for all members, return parameters and error. 
+evaluate_members <- function(ff,fit_dir){
+  fit <- readRDS(paste(fit_dir,ff,sep="/"))
+  x <- unlist(strsplit(ff,split="_"))
+  treatment <- x[1]
+  id <- unlist(strsplit(x[length(x)],split=".rds"))[1]
+  pop <- fit$member$pop
+  fn.control <- fit$fn.control
+  
+  ## find out value of g used 
+  PAR <- fit$optim$bestmem
+  par <- fn.control$unscale(PAR,fn.control$fitted_pars)
+  g <- par["g"]
+    
+  errors <- unlist(mclapply(1:nrow(pop), function(i){
+    PAR <- pop[i,]
+    err <- opt.t(PAR,fn.control)
+    return(err)},mc.cores = 12))
+
+
+  x <- list(pop=pop,errors=errors, treatment=treatment,id=id,g=g)
+  return(x)
+}
+
+## get error for all members of a population
+evaluate_population <- function(pop,fn.control){
+  errors <- sapply(1:nrow(pop), function(i){
+    PAR <- pop[i,]
+    err <- opt.t(PAR,fn.control)
+    return(err)})
+
+ 
+  return(errors)
+}
+
+process.population <- function(pop){
+  x <- data.frame(pop$pop)
+  x$errors <- pop$errors
+  x$g <- pop$g
+  x$id <- pop$id
+  x$treatment <- pop$treatment
+  return(x)
+}
 

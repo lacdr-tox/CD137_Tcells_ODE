@@ -174,6 +174,42 @@ fit_model <- function(treatment,CI=FALSE,QSS=FALSE,set_growth=0.7,fitted_pars=c(
     saveRDS(opt,fname)
 }
 
+fit_model_storepop <- function(treatment,CI=FALSE,QSS=FALSE,set_growth=0.7,fitted_pars=c("s1","ki","kr","ke","kq","dq"),save_dir="test_output",save_name="A",gens=200,pop=100,ncore=8){
+  ## build the function control, can modify the values (BUT NOT THE NAMES) of default_pars
+  ## scalars must match the par.names and is used to set ranges on the fitted pars.
+  ## evolutionary algorithm benefits if the values of the fitted parameters have roughly the same size, which is why we do this scaling
+  ## length of upper and lowe must also be matched manually
+  ## SET QSS TRUE/FALSE for QUASISteadyState, CI for constant infiltration of CTLs into tumour, CI+false for variable rate per volume
+  mdf = get.g(treatment)
+  idf=get.iv(treatment)## to get around the dependence issue, we could here select only 1 position per mouse
+  idf_d7=get.d7.data(treatment)
+  fn.control <- list(mdf=mdf,idf=idf,idf_d7=idf_d7,fitted_pars=fitted_pars,unscale = function(fit.pars,fitted_pars){
+    scalars <- rep(50,length(fitted_pars))
+    scalars[fitted_pars=="s1"] <- scalars[fitted_pars=="s1"]*0.1 
+    if(CI==TRUE) scalars[fitted_pars=="s1"] <- scalars[fitted_pars=="s1"]*100
+    scalars[fitted_pars=="g"] <- scalars[fitted_pars=="g"]*0.02 
+    scalars[fitted_pars=="pow"] <- scalars[fitted_pars=="pow"]*0.02 
+    fit.pars <- fit.pars*scalars
+    names(fit.pars) <- fitted_pars
+    default_pars<-c(const_inf=CI,QSS=QSS,t_in=3,T0=1200,s1 = 50, ki=  0, kr=0, dr = 0,di = 0, g=set_growth,  ke=1/3, pow=2/3,  kq=10,  dq=2,  t50=8000)
+    pars <- c(fit.pars,default_pars[!names(default_pars)%in%names(fit.pars)])
+    return(pars)
+  })
+  upper <- rep(1,length(fitted_pars))
+  lower <- rep(0,length(fitted_pars))
+  require(DEoptim)
+  
+  #opt <- DEoptim(opt.t,lower=lower,upper=upper, control=list(NP=100,itermax=100),fn.control=fn.control)
+  source("deopt2.R")
+  opt <- DEoptim2(opt.t,lower=lower,upper=upper, control=list(NP=pop,itermax=gens,parallelType=1,limitCores=ncore,storepopfrom = 1, storepopfreq = 1),fn.control=fn.control)
+  opt$fn.control <- fn.control
+  require(stringr)
+  fit_id <- length(list.files(save_dir))
+  fname <- paste(save_dir,"/",treatment,"_",save_name,"_",str_pad(fit_id,width = 3,pad = 0),".rds",sep="")
+  print(fn.control$unscale(opt$optim$bestmem,fitted_pars))
+  saveRDS(opt,fname)
+}
+
 
 
 

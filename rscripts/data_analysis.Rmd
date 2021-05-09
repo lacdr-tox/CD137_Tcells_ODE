@@ -74,18 +74,29 @@ dfvec$ID[dfvec$ID=="mAB"] <- "ACT+mAb"
 
 ```{r}
 require(ggplot2)
+library(gridExtra)
+library(cowplot)
+get_legend<-function(myggplot){
+  tmp <- ggplot_gtable(ggplot_build(myggplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
 
 p1 <- ggplot(subset(ivstat,type=="tumour"), aes(x=apt, y=mit))+
   facet_grid(cols=vars(ID))+
   geom_point(aes(shape=as.character(mouse),color=as.character(day)),size=2)+
   geom_abline(slope=1,intercept=0,color="red",linetype="dashed")+
-  geom_point(data=subset(dfstat,type=="tumour"),aes(shape=as.character(mouse),color=as.character(day)),size=4)+
-  geom_line(data=subset(dfstat,type=="tumour"),aes(group=as.character(mouse)))+
+  geom_point(data=subset(dfstat,type=="tumour"),aes(shape=as.character(mouse),color=as.character(day)),size=4,show.legend = FALSE)+
+  geom_line(data=subset(dfstat,type=="tumour"),aes(group=as.character(mouse)),show.legend = FALSE)+
   scale_x_continuous(expression(paste("TC apoptosis ",(TC^-1~day^-1))))+
   scale_y_continuous(expression(paste("TC mitosis ",(TC^-1~day^-1))))+
   scale_color_manual("day",values=dayz)+
   scale_shape_manual("mouse",values=mouse_shapes)+
-  theme_classic(base_size = 14)
+  theme_classic(base_size = 10)+
+  theme(legend.position = "top",legend.direction = "horizontal")
+  ab_legend <- get_legend(p1)
+p1 <- p1  +  theme(legend.position = "none")
 
 
 p1a <- ggplot(subset(ivstat,type=="tumour"), aes(x=apt, y=mit))+
@@ -95,8 +106,9 @@ p1a <- ggplot(subset(ivstat,type=="tumour"), aes(x=apt, y=mit))+
   scale_x_continuous(expression(paste("TC apoptosis ",(TC^-1~day^-1))))+
   scale_y_continuous(expression(paste("TC mitosis ",(TC^-1~day^-1))))+
   scale_color_viridis_d("mouse")+
-  scale_size_area("TCs")+
-  theme_classic(base_size = 14)
+  scale_size_area("TCs",limits=c(0,2500))+
+  theme_classic(base_size = 10)+
+  theme(legend.position = "none")
 
 
 
@@ -104,14 +116,15 @@ p2 <- ggplot(subset(ivstat,type=="CTL"), aes(x=apt, y=mit))+
  facet_grid(cols=vars(ID))+
   geom_point(aes(shape=as.character(mouse),color=as.character(day)),size=2)+
   geom_abline(slope=1,intercept=0,color="red",linetype="dashed")+
-  geom_point(data=subset(dfstat,type=="CTL"),aes(shape=as.character(mouse),color=as.character(day)),size=4)+
+  geom_point(data=subset(dfstat,type=="CTL"),aes(shape=as.character(mouse),color=as.character(day)),size=4,show.legend = FALSE)+
   geom_line(data=subset(dfstat,type=="CTL"),aes(group=as.character(mouse)))+
   scale_x_continuous(expression(paste("CTL apoptosis ",(CTL^-1~day^-1))))+
   scale_y_continuous(expression(paste("CTL mitosis ",(CTL^-1~day^-1))))+
   scale_color_manual("day",values=dayz)+
   scale_shape_manual("mouse",values=mouse_shapes)+
   scale_linetype_discrete("")+
-  theme_classic(base_size = 14)
+  theme_classic(base_size = 10)+
+  theme(legend.position = "none")
 
 p2a <- ggplot(subset(ivstat,type=="CTL"), aes(x=apt, y=mit))+
  facet_grid(cols=vars(ID))+
@@ -120,41 +133,82 @@ p2a <- ggplot(subset(ivstat,type=="CTL"), aes(x=apt, y=mit))+
   scale_x_continuous(expression(paste("CTL apoptosis ",(CTL^-1~day^-1))))+
   scale_y_continuous(expression(paste("CTL mitosis ",(CTL^-1~day^-1))))+
   scale_color_viridis_d("mouse")+
-  scale_size_area("CTLs")+
-  theme_classic(base_size = 14)
-
+  scale_size_area("cells",limits=c(0,2000))+
+  theme_classic(base_size = 10)+
+  theme(legend.position = "top",legend.direction = "horizontal")
+  cd_legend <- get_legend(p2a)
+p2a <- p2a +theme(legend.position="none")
+  
 p3 <- ggplot(subset(dfvec,type=="CTL"), aes(x=apt, y=mit))+
   facet_grid(cols=vars(ID))+
     geom_abline(slope=1,intercept=0,color="red",linetype="dashed")+
   geom_abline(slope=-1,intercept=0,color="red",linetype="dashed")+
   geom_point(aes(shape=as.character(mouse),color=as.character(day)),size=4)+
   geom_line(aes(group=as.character(mouse)))+
-  scale_x_continuous(expression(paste("CTL apoptosis change",(d6-d9))))+
-  scale_y_continuous(expression(paste("CTL mitosis change",(d6-d9))))+
+  scale_x_continuous(expression(paste("CTL apoptosis change",(d9-d6))))+
+  scale_y_continuous(expression(paste("CTL mitosis change",(d9-d6))))+
   scale_color_manual("day",values=dayz)+
   scale_shape_manual("mouse",values=mouse_shapes)+
   scale_linetype_discrete("")+
-  theme_classic(base_size = 14)
+  theme_classic(base_size = 10)+
+  theme(legend.position = "top",legend.direction = "horizontal")
+ef_legend <- get_legend(p3)
+p3 <- p3 +theme(legend.position="none")
 
 p4 <- ggplot(subset(dfvec,type=="tumour"), aes(x=apt, y=mit))+
   facet_grid(cols=vars(ID))+
   geom_abline(slope=1,intercept=0,color="red",linetype="dashed")+
   geom_point(aes(shape=as.character(mouse),color=as.character(day)),size=4)+
   geom_line(aes(group=as.character(mouse)))+
-  scale_x_continuous(expression(paste("TC apoptosis change ",(d6-d9))))+
-  scale_y_continuous(expression(paste("TC mitosis change ",(d6-d9))))+
+  scale_x_continuous(expression(paste("TC apoptosis change ",(d9-d6))))+
+  scale_y_continuous(expression(paste("TC mitosis change ",(d9-d6))))+
   scale_color_manual("day",values=dayz)+
   scale_shape_manual("mouse",values=mouse_shapes)+
   scale_linetype_discrete("")+
-  theme_classic(base_size = 14)
+  theme_classic(base_size = 10)+
+  theme(legend.position = "none")
+```
 
+```{R}
+
+legend_height<-0.15
+label_height <- 0.07
+
+pab <- ggdraw()+
+draw_plot(ab_legend, 0, 0, 1, legend_height) +
+draw_plot(p1, 0, legend_height, .5, 1-legend_height-label_height) +
+draw_plot(p2, .5, legend_height, .5, 1-legend_height-label_height) +
+draw_plot_label(c("A", "B", ""), c(0, 0.5, 0), c(1-label_height, 1-label_height, 1-legend_height), size = 15)+
+  draw_plot_label(c("tumour cells", "CTLs"), x=c(0.25,0.75),y=c(1,1),hjust = c(0.5,0.5))
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/f1ab.tiff",plot = pab,width = unit(7.5,"in"),height=unit(3.3,"in"),dpi=300)
+
+pcd <- ggdraw() +
+ draw_plot(cd_legend, 0, 0, 1, legend_height) +
+ draw_plot(p1a, 0, legend_height, .5, 1-legend_height) +
+  draw_plot(p2a, .5, legend_height, .5, 1-legend_height) +
+  draw_plot_label(c("C", "D", ""), c(0, 0.5, 0), c(1, 1, 1-legend_height), size = 15)
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/f1cd.tiff",plot = pcd,width = unit(7.5,"in"),height=unit(3,"in"),dpi=300)
+
+pef <- ggdraw() +
+ draw_plot(ef_legend, 0, 0, 1, legend_height) +
+ draw_plot(p3, 0, legend_height, .5, 1-legend_height) +
+  draw_plot(p4, .5, legend_height, .5, 1-legend_height) +
+  draw_plot_label(c("E", "F", ""), c(0, 0.5, 0), c(1, 1, 1-legend_height), size = 15)
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/f1ef.tiff",plot = pef,width = unit(7.5,"in"),height=unit(3,"in"),dpi=300)
+
+```
+
+```{R}
 print("not rendering")
 if(TRUE){
   p <- list(p1,p2,p3,p4)
   pad <- egg::ggarrange(p1,p2,p4,p3,nrow=2)
-  pad_alliv <- egg::ggarrange(p1,p2,p1a,p2a,p4,p3,nrow=3)
+  pad_alliv <- egg::ggarrange(p1,p2,p1a,p2a,p4,p3,nrow=3,labels = c("A","B","C","D","E","F"))
   
 }
+
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/f1.tiff",plot = pad_alliv,width = unit(7.5,"in"),height=unit(10,"in"),dpi=300)
+
 ```
 
 
@@ -211,8 +265,8 @@ vdf$treated2<-FALSE
 vdf$treated2[vdf$start=="d3.s"&vdf$day>=3] <- TRUE
 vdf$treated2[vdf$start=="d7.s"&vdf$day>=6] <- TRUE
 
-to_string <- as_labeller(c('1' = paste("ACT (d3, ","OVA^'-'",")",sep=""), 
-                           '2' = paste("no~ACT ", " (d3, ","OVA^'+'",")",sep=""),
+to_string <- as_labeller(c('1' = "ACT~OVA^'-'~(d3)", 
+                           '2' = "no~ACT~OVA^'+'~(d3)",
                            '3' = "ACT-only~(d3)", 
                            '4' = "ACT+mAb~(d3)",
                            '5' = "ACT-only~(d7)", 
@@ -225,8 +279,9 @@ pg <-ggplot(mdf,aes(x=tmid,y=g,color=treated))+
   geom_line(aes(group=mouse))+
   scale_x_continuous("days", breaks=seq(0,15,3))+
   scale_y_continuous(expression(paste("tumour volume growth", (day^-1))))+
-  scale_color_discrete("",labels=c("no ACT","ACT"))+
-  theme_classic(base_size = 20)
+  scale_color_manual("",labels=c("no ACT","ACT"), values=c("#000000","#009E73"))+
+  theme_classic(base_size = 20)+
+  theme(text = element_text(size=9))
 pg
 
 pv <-ggplot(vdf,aes(x=day))+
@@ -238,9 +293,34 @@ pv <-ggplot(vdf,aes(x=day))+
   geom_point(aes(group=mouse,y=vol,color=treated))+
   scale_x_continuous("days", breaks=seq(0,15,3))+
   scale_y_log10(expression(paste("tumour volume", (mm^3))))+
-  scale_color_discrete("",labels=c("no ACT","ACT"))+
-  theme_classic(base_size = 20)
+  scale_color_manual("",labels=c("no ACT","ACT"), values=c("#000000","#009E73"))+
+  theme_classic(base_size = 20)+
+  theme(text = element_text(size=9))+
+  guides(color=FALSE)
 pv
+
+
+
+make_growth_lines <- function(g){
+  day <- seq(0,14,1)
+  data.frame(day=rep(day,4),vol=c(0.01*exp(day*g),0.0025*exp(day*g),0.04*exp(day*g),0.16*exp(day*g)),g=g,id=c(rep(1,length(day)),rep(2,length(day)),rep(3,length(day)),rep(4,length(day))))  
+}
+
+growth.lines <- do.call(rbind,lapply(c(0.3,0.4,0.5,0.6,0.7,0.8),make_growth_lines))
+
+psx <-ggplot(growth.lines,aes(x=day,y=vol))+
+  facet_grid(rows=vars(g))+
+  geom_line(aes(group=id),color="grey70")+
+  geom_line(data=subset(vdf,treatment=="OVAnoACT"),aes(group=mouse,y=vol))+
+  geom_point(data=subset(vdf,treatment=="OVAnoACT"),aes(group=mouse,y=vol))+
+ scale_x_continuous("days", breaks=seq(0,15,3))+
+  scale_y_log10(expression(paste("tumour volume", (mm^3))))+
+  theme_classic(base_size = 20)+
+  theme(text = element_text(size=10),legend.position = "top")
+psx
+
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/s2.tiff",plot = psx,width = unit(3,"in"),height=unit(6.5,"in"),dpi=300)
+
 ```
 REVISED CODE FOR KILLING PARAMETER TESTING
 
@@ -307,6 +387,7 @@ Best thing to do with this data: leave out the dual-sat fit, compare only mass-a
 THIS MIGHT BE WRONG (CODE IN FOLLOWING CHUNK), BECAUSE IF WE SPLIT THE DATA UP THEN WE NEED TO ADD AN EXTRA (HYPER)PARAMETER FOR EACH SPLIT, I RECKON.
 WE ARE GOING TO AVOID WORRYING ABOUT ANY OF THIS BY ONLY COMPARING THE MASS ACTION AND LINEAR FIT, AND ONLY LOOKING AT THE CASE WHERE WE FIT SEPARATE KILLING PARAMETERS PER GROUP. THAT IS BECAUSE WE WERE ONLY ASKED TO SHOW THAT THE NUMBER OF TUMOUR CELLS DOES NOT INFLUENCE THE KILLING RATE. 
 ```{r,echo=FALSE}
+require(ggh4x)
 require(reshape2)
 require(ggplot2)
 ll.apopto <- function(k,data){
@@ -485,6 +566,19 @@ p <- ggplot(ss,aes(x=model,y=value))+
   theme(panel.spacing = unit(3, "lines"))
 p
 
+
+ps2a <- ggplot(ss,aes(x=value,y=model))+
+  facet_nested(variable+subset~.,labeller = labz,scales="free")+
+  #facet_grid(rows=vars(variable),cols=vars(subset),labeller = labz,scales="free")+
+  geom_point(size=3)+
+  scale_color_viridis_d()+
+  scale_x_continuous("information criterion value")+
+  scale_y_discrete("",labels=c("linear","mass-action"))+
+  theme_classic(base_size=12)+ 
+  theme(panel.spacing = unit(3, "lines"))
+
+ps2a
+
 ```
 
 Retrieve best fitting killing rates for linear and mass-action killing
@@ -558,29 +652,45 @@ labz <- as_labeller(c('all' = "all samples",
 
 
 
-p2c <- ggplot(subset(fits,type=="linear"),aes(x=X))+
+ps2b <- ggplot(subset(fits,type=="linear"),aes(x=X))+
   facet_grid(cols=vars(trt),scales = "free",labeller=labz)+
   geom_point(data=lin,aes(y=kills))+
   geom_ribbon(aes(ymin=conf05,ymax=conf95),alpha=0.1)+
   geom_line(aes(y=exp),color="red")+
   #geom_point(size=1.5,aes(color=treatment,y=TCa*TC/24))+
-  theme_classic(base_size=20)+
+  theme_classic(base_size=12)+
   scale_x_continuous(expression(CTLs~at~position))+
-  scale_y_continuous(expression(tumour~cell~apoptosis~events~(hour^-1)))
-p2c
+  scale_y_continuous(expression(TC~apoptosis~events~(hour^-1)))
+ps2b
 
-p2d <- ggplot(subset(fits,type=="mass-action"),aes(x=X))+
+ps2c <- ggplot(subset(fits,type=="mass-action"),aes(x=X))+
   facet_grid(cols=vars(trt),scales = "free",labeller=labz)+
     geom_point(data=massa,aes(y=kills))+
   geom_ribbon(aes(ymin=conf05,ymax=conf95),alpha=0.1)+
   geom_line(aes(y=exp),color="red")+
   #geom_point(size=1.5,aes(color=treatment,y=TCa*TC/24))+
-  theme_classic(base_size=20)+
+  theme_classic(base_size=12)+
   scale_x_continuous(expression(product~of~tumour~cells~and~CTLs~at~position))+
-  scale_y_continuous(expression(tumour~cell~apoptosis~events~(hour^-1)))
-p2d
+  scale_y_continuous(expression(TC~apoptosis~events~(hour^-1)))
+ps2c
+
+
 
 #ps1 <- egg:
+```
+
+Arrange plots for figure S1
+
+```{R}
+require(cowplot)
+fs2 <- ggdraw()+
+  draw_plot(ps2a,0,0,width=0.4,height=1)+
+  draw_plot(ps2b,0.4,0.5,width=0.6,height=0.5)+
+  draw_plot(ps2c,0.4,0,width=0.6,height=0.5)+
+  draw_plot_label(c("A","B","C"),x=c(0,0.4,0.4),y=c(1,1,0.5))
+
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/s1.tiff",plot = fs2,width = unit(7.5,"in"),height=unit(6,"in"),dpi=300)
+
 ```
 
 ```{r, echo=FALSE}
@@ -604,30 +714,65 @@ measure_mit_funcs <- paste(base_dir,"/rscripts/utility/measure_mitosis.R",sep=""
 source(measure_mit_funcs)
 print(summary)
 
-df.smm <- rbind(data.frame(CTL=iv.proc$CTL,TC=iv.proc$TC,mitosis=iv.proc$TC*iv.proc$TCm/24,day=iv.proc$day,treatment=iv.proc$treatment,start="d3.s"),
-                data.frame(CTL=summary$CTL,TC=summary$TCs,mitosis=summary$mitosis,day=10,treatment=summary$treatment,start="d7.s"))
+df.smm <- rbind(data.frame(CTL=iv.proc$CTL,TC=iv.proc$TC,mitosis=iv.proc$TC*iv.proc$TCm/24,apoptosis=iv.proc$TC*iv.proc$TCa/24,day=iv.proc$day,treatment=iv.proc$treatment,start="d3.s"),
+                data.frame(CTL=summary$CTL,TC=summary$TCs,mitosis=summary$mitosis,apoptosis=NA,day=10,treatment=summary$treatment,start="d7.s"))
+
+
 
 
 p2c <- ggplot(iv.proc,aes(x=CTL))+
   geom_ribbon(data=exp_ctl_pois,aes(ymin=conf05,ymax=conf95),alpha=0.1)+
-  geom_line(data=exp_ctl_pois,aes(y=exp),color="red")+
+  geom_line(data=exp_ctl_pois,aes(y=exp,linetype="Poisson"),color="red")+
   geom_point(size=1.5,aes(color=treatment,y=TCa*TC/24))+
   theme_classic(base_size=20)+
   scale_x_continuous("total CTLs at position")+
-  scale_y_continuous(expression(TC~apoptosis~events~(hour^-1)))
+  scale_y_continuous(expression(TC~apoptosis~events~(hour^-1)))+
+  scale_linetype("",labels=c("Poisson \nexpectation"))+
+  theme(text = element_text(size=10),legend.position = "top",legend.direction = "vertical")
 p2c
 
 p2d <- ggplot(df.smm,aes(x=CTL,y=mitosis))+
   geom_point(size=1.5,aes(color=treatment,shape=start))+
   theme_classic(base_size=20)+
   scale_x_continuous("total CTLs at position")+
-  scale_y_continuous(expression(TC~mitosis~events~(hour^-1)))
+  scale_y_continuous(expression(TC~mitosis~events~(hour^-1)))+
+  scale_shape("treatment \nstart",labels=c("day 3", "day 7"))+
+  theme(text = element_text(size=10),legend.position = "top",legend.direction = "vertical")
 p2d
+
+dfx <- reshape2::melt(df.smm,measure.vars=c("apoptosis","mitosis"))
+exp_ctl_pois$variable<- "apoptosis"
+p2cd <- ggplot(dfx,aes(x=CTL))+
+  facet_grid(cols=vars(variable))+
+  geom_ribbon(data=exp_ctl_pois,aes(ymin=conf05,ymax=conf95),alpha=0.1)+
+  geom_line(data=exp_ctl_pois,aes(y=exp,linetype="Poisson"),color="red")+
+  geom_point(size=1.5,aes(y=value,color=treatment,shape=start))+
+  theme_classic(base_size=20)+
+  scale_x_continuous("total CTLs at position")+
+  scale_y_continuous(expression(events~(TC^-1~hour^-1)))+
+  scale_shape("treatment \nstart",labels=c("day 3", "day 7"))+
+    scale_linetype("",labels=c("Poisson \nexpectation"))+
+  theme_classic(base_size=20)+
+  theme(text = element_text(size=10))
+p2cd
+
+
 
 ```
 
 ```{r}
+f2_top <- egg::ggarrange(pv,pg,nrow=1,labels=c("A","B"))
+f2_bot <- egg::ggarrange(p2cd,nrow=1,labels=c("C"))
 
+#f2 <- egg::ggarrange(pv,pg,p2c,p2d,nrow=2,labels=c("A","B","C","D"),heights=c(3,1))
+
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/f2ab.tiff",plot = f2_top,width = unit(7.5,"in"),height=unit(6,"in"),dpi=300)
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/f2c.tiff",plot = f2_bot,width = unit(7.5,"in"),height=unit(3.5,"in"),dpi=300)
+
+```
+
+```{r}
+require(ggplot2)
 filesplitter <- function(filename){
   x <- strsplit(filename,split=".csv")[[1]]
   x <- strsplit(x,split="_")[[1]]
@@ -667,33 +812,56 @@ lablr <- function(x){
 lablr <- as_labeller(c('m48' = "ACT+mAb~(m48)", 'm51'="ACT-only~(m51)", 'm52'="ACT-only~(m52)", 'm53'="ACT-only~(m53)",  'm54' = "ACT+mAb~(m54)",'m56' = "ACT+mAb~(m56)",
                        'p00'="p00",'p01'="p01",'p02'="p02",'p03'="p03",'p04'="p04"),label_parsed)
 
-p <- ggplot(dat,aes(x=X*0.7,y=Y*0.7,color=type))+
-  facet_grid(rows=vars(position),cols=vars(mouse),labeller=lablr)+
+dat$treatment <- "ACT-only"
+dat$treatment[dat$mouse%in%c("m48","m54","m56")] <- "ACT+mAb"
+
+get_legend<-function(myggplot){
+  tmp <- ggplot_gtable(ggplot_build(myggplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
+
+pa <- ggplot(dat,aes(x=X*0.7,y=Y*0.7,color=type))+
+  facet_grid(position~treatment+mouse)+
   geom_point(alpha=0.6)+
   scale_color_viridis_d(labels=c("CTL","mitosis"))+
-  theme_classic(base_size = 14)+
+  theme_classic(base_size = 12)+
   scale_x_continuous(expression(X~(paste(mu,m,sep=""))))+
   scale_y_continuous(expression(Y~(paste(mu,m,sep=""))))
-p
+s6_leg <- get_legend(pa)
+pa <- pa+theme(legend.position = "none")
 
-p <- ggplot(dat,aes(x=X*0.7,y=Slice*7,color=type))+
-  facet_grid(rows=vars(position),cols=vars(mouse),labeller=lablr)+
+pa
+
+pb <- ggplot(dat,aes(x=X*0.7,y=Slice*7,color=type))+
+  facet_grid(position~treatment+mouse)+
   geom_point(alpha=0.6)+
   scale_color_viridis_d(labels=c("CTL","mitosis"))+
-  theme_classic(base_size = 14)+
+  theme_classic(base_size = 12)+
   scale_x_continuous(expression(X~(paste(mu,m,sep=""))))+
-  scale_y_continuous(expression(Z~(paste(mu,m,sep=""))))
-p
+  scale_y_continuous(expression(Z~(paste(mu,m,sep=""))),breaks=c(0,50,100))+
+  theme(legend.position = "none")
+pb
 
-p <- ggplot(dat,aes(x=Slice*7,y=Y*0.7,color=type))+
-  facet_grid(rows=vars(position),cols=vars(mouse),labeller=lablr)+
+pc <- ggplot(dat,aes(x=Slice*7,y=Y*0.7,color=type))+
+  facet_grid(position~treatment+mouse)+
   geom_point(alpha=0.6)+
   scale_color_viridis_d(labels=c("CTL","mitosis"))+
-  theme_classic(base_size = 14)+
-  scale_x_continuous(expression(Z~(paste(mu,m,sep=""))))+
-  scale_y_continuous(expression(Y~(paste(mu,m,sep=""))))
-p
+  theme_classic(base_size = 12)+
+  scale_x_continuous(expression(Z~(paste(mu,m,sep=""))),breaks=c(0,50,100))+
+  scale_y_continuous(expression(Y~(paste(mu,m,sep=""))))+
+  theme(legend.position = "none")
+pc
 
+require(cowplot)
+ps6 <- ggdraw() +
+ draw_plot(pa, 0, 0.3, 0.7, 0.7) +
+ draw_plot(pc, 0.7, 0.3, 0.3, .7) +
+  draw_plot(pb, 0,0,0.7,0.3)+
+  draw_plot(s6_leg,0.7,0.1,0.2,0.2)+
+  draw_plot_label(c("A", "B", "C"), c(0, 0.7, 0), c(1, 1, 0.3), size = 15)
+ggsave("/home/richard/Documents/03_CTLsGoesNative/000_archive/figures/fs6.tiff",plot = ps6,width = unit(18,"in"),height=unit(12,"in"),dpi=300)
 ```
 
 

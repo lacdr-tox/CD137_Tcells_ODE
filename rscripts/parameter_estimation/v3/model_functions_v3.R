@@ -50,6 +50,7 @@ run.mod <- function(PAR,fn.control,id=1,tmax=15,d7s=FALSE){
   return(out)
 }
 
+## run model with supplied settings. return all model output
 run.mod.sensitivity <- function(PAR,fn.control,id=1,tmax=15,d7s=FALSE,vary="ke",ratio=2){
   times <- seq(0,tmax,0.1)
   fit.pars <- fn.control$unscale(PAR,fn.control$fitted_pars)
@@ -64,6 +65,8 @@ run.mod.sensitivity <- function(PAR,fn.control,id=1,tmax=15,d7s=FALSE,vary="ke",
   out$vary <- vary
   return(out)
 }
+
+
 
 
 
